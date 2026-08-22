@@ -147,6 +147,19 @@ sha; `git log -S "[D-nn]" -- DECISIONS.md` gets the diff directly.
 
 **How I'd know I was wrong.** A rider result contains a session whose `expiresAt` is already past, or result counts come back short while drivers are known to be in range.
 
+## [D-11] The demo re-seeds itself from a read, not from a scheduler
+**Phase:** 1 · **Commit:** `Seed ten synthetic drivers and re-seed when the demo empties` · **Touches:** apps/api/src/demo/seed.ts, apps/api/src/routes/discovery-routes.ts
+
+**Context.** Seeded sessions expire on the same TTL as real ones, which is the honest thing to do and also means a deployment nobody has visited for an hour shows an empty screen. Empty reads as broken.
+
+**Decision.** When a rider query returns nothing and `DEMO_MODE` is on, seed inline and re-run the query. A module-level in-flight promise makes a burst of concurrent requests share one seed.
+
+**Alternatives rejected.** *A cron or scheduled job* — another process to deploy and keep alive, writing on a timer whether or not anyone is looking, and the thing most likely to be quietly dead when it matters. *A very long TTL for demo rows* — hides the expiry behaviour that is the actual product. *Seed once at boot* — a container that stays up longer than the TTL drains and never recovers.
+
+**Trade-off accepted.** A GET writes. The first rider after a quiet period pays about ten upserts plus one bcrypt hash (~56ms measured) inside their request, so latency on that endpoint is bimodal, and it is no longer safe to cache or blindly retry. The only thing keeping this off real data is a config flag, not a mechanism — `DEMO_MODE=true` in an environment with real drivers would inject synthetic rows into a live roster.
+
+**How I'd know I was wrong.** `DEMO_MODE` on somewhere it should not be, or a bimodal latency spike on `nearby` that traces to the seed path.
+
 ## Dead ends
 
 _Nothing yet._
@@ -178,3 +191,9 @@ _Nothing yet._
 - **`$geoNear` is capped at its default 100 documents** before the explicit
   `$limit` runs. With MAX_NEARBY_RESULTS at 20 that is invisible; if the limit
   is ever raised past 100 the pipeline silently truncates.
+- **The self-healing seed's lock is in-process only.** `ensureDemoData` shares
+  one in-flight promise per Node process. Two API containers behind a load
+  balancer will both seed at the same time. The writes are upserts keyed by
+  phone so the result is still correct, but both instances pay the cost and
+  neither knows the other is doing it. A real fix is a lock document in Mongo
+  with a short TTL, or moving seeding out of the request path entirely.

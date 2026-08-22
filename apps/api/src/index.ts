@@ -1,8 +1,16 @@
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { connectToDatabase, disconnectFromDatabase } from './db/connection.js';
+import { ensureDemoData } from './demo/seed.js';
 
 await connectToDatabase(env.MONGODB_URI);
+
+// `docker compose up` has to produce a populated app, not an empty one waiting
+// for its first request.
+if (env.DEMO_MODE) {
+  const seeded = await ensureDemoData();
+  console.log(`Demo mode: ${seeded} synthetic drivers available.`);
+}
 
 const app = createApp();
 const server = app.listen(env.PORT, () => {
