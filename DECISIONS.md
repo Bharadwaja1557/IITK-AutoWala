@@ -173,6 +173,19 @@ sha; `git log -S "[D-nn]" -- DECISIONS.md` gets the diff directly.
 
 **How I'd know I was wrong.** A test passes here and fails against the compose database.
 
+## [D-13] The driver's token lives in localStorage
+**Phase:** 1 · **Commit:** `Add the React client: driver availability and rider discovery` · **Touches:** apps/web/src/api/client.ts, apps/web/src/screens/DriverScreen.tsx
+
+**Context.** A driver signs in on a phone, taps available, and the browser gets backgrounded and killed. If the token does not survive that, they sign in again every time, which is exactly the friction that stops people using the thing.
+
+**Decision.** Store the JWT in `localStorage` and send it as a bearer header. On load, the client asks `/auth/me` who the token belongs to rather than trusting a cached profile.
+
+**Alternatives rejected.** *httpOnly cookie set by the API* — script cannot read it, which is strictly better against XSS, but it means CSRF protection on every mutating route, SameSite configuration, and a cookie that has to survive the proxy hop. Real improvement, real work, and phase 1 is a vertical slice. *In-memory only* — safest, and signs the driver out every time the browser is killed. *sessionStorage* — identical exposure to XSS with worse behaviour on mobile.
+
+**Trade-off accepted.** Any XSS in this app hands over a token valid for seven days. React escapes interpolated text and there is no `dangerouslySetInnerHTML` anywhere in the client, but that is a habit rather than a guarantee, and it gets harder to keep the moment drivers can write anything that another user reads. There is also no way to revoke a stolen token short of rotating `JWT_SECRET`.
+
+**How I'd know I was wrong.** Any feature that renders user-supplied HTML, or any third-party script added to the page.
+
 ## Dead ends
 
 _Nothing yet._
@@ -210,3 +223,14 @@ _Nothing yet._
   phone so the result is still correct, but both instances pay the cost and
   neither knows the other is doing it. A real fix is a lock document in Mongo
   with a short TTL, or moving seeding out of the request path entirely.
+- **The rider list is a snapshot.** It fetches once and after that only when
+  Refresh is pressed, so "said so 4 minutes ago" keeps saying 4 minutes until
+  you reload. Live updates over WebSocket are phase 2; polling in the meantime
+  would be work thrown away.
+- **No router.** Two views behind a `useState` toggle, so nothing is
+  deep-linkable and a refresh always lands on the rider screen. Fine at two
+  views, wrong at four.
+- **No component tests yet.** The brief asks for RTL across the five phases;
+  phase 1 spends its test budget on the two database properties that are
+  actually hard to get right. Everything in `apps/web` is currently covered by
+  typecheck and by my having clicked it.
