@@ -134,6 +134,19 @@ sha; `git log -S "[D-nn]" -- DECISIONS.md` gets the diff directly.
 
 **How I'd know I was wrong.** Someone asks for demand-over-time data, or the retry path starts firing in logs.
 
+## [D-10] The expiry filter goes inside `$geoNear.query`, not in a later `$match`
+**Phase:** 1 · **Commit:** `Add the rider discovery query as a $geoNear pipeline` · **Touches:** apps/api/src/services/discovery-service.ts
+
+**Context.** `$geoNear` has to be the first stage of the pipeline, so the "only unexpired sessions" predicate cannot sit in front of it. `$geoNear` also applies its own result limit — 100 documents by default — before anything downstream runs.
+
+**Decision.** `query: { expiresAt: { $gt: now } }` inside the `$geoNear` stage, so expired sessions are excluded during the geo search rather than after it.
+
+**Alternatives rejected.** *`$match` after `$geoNear`* — correct only if nothing caps results first, and something always does. `$geoNear` would rank and return its nearest N including expired sessions, the `$match` would delete some of them, and the rider gets fewer drivers than asked for while nearer live ones were never examined. Silent under-fill, not an error. *Trusting the TTL index* — the reaper runs about once a minute; expired sessions stay indexed and matchable until it does. *Filtering in Node after the query* — same under-fill, plus transferring rows to throw away. *`$expr` with `$$NOW`* — would use the database's clock instead of the API's, but `$expr` cannot use the index for the range, so the filter stops being cheap.
+
+**Trade-off accepted.** `now` is computed in the API process, so correctness depends on the API and database clocks agreeing. Skew of a few seconds shows up as a session included or excluded slightly wrong. And the predicate is tucked inside a stage that also does the geo search, which is easy to miss when reading — the next person adding a filter will reach for `$match` and get subtly different behaviour.
+
+**How I'd know I was wrong.** A rider result contains a session whose `expiresAt` is already past, or result counts come back short while drivers are known to be in range.
+
 ## Dead ends
 
 _Nothing yet._
@@ -158,3 +171,10 @@ _Nothing yet._
   against a dummy hash on the miss path. Not done.
 - **No rate limiting on login.** Phase 4. Right now the only thing between an
   attacker and an unlimited password-guessing loop is bcrypt's cost factor.
+- **`GET /api/drivers/nearby` is public and returns phone numbers.** That is
+  fine while every record is synthetic, and not fine the moment a real driver
+  registers. A real deployment needs rider accounts, or a masked number, or a
+  call proxy. Right now anyone can scrape the live roster.
+- **`$geoNear` is capped at its default 100 documents** before the explicit
+  `$limit` runs. With MAX_NEARBY_RESULTS at 20 that is invisible; if the limit
+  is ever raised past 100 the pipeline silently truncates.
