@@ -160,6 +160,19 @@ sha; `git log -S "[D-nn]" -- DECISIONS.md` gets the diff directly.
 
 **How I'd know I was wrong.** `DEMO_MODE` on somewhere it should not be, or a bimodal latency spike on `nearby` that traces to the seed path.
 
+## [D-12] Tests run against a real mongod, in memory, pinned to the deployed major
+**Phase:** 1 · **Commit:** `Test distance ordering, expiry filtering, and the auth boundary` · **Touches:** apps/api/tests/setup.ts, apps/api/vitest.config.ts
+
+**Context.** The two properties these tests exist to prove are MongoDB behaviours, not behaviours of code I wrote: that `$geoNear` ranks by true distance, and that an expired-but-uncollected session is excluded by the query rather than by the TTL reaper.
+
+**Decision.** `mongodb-memory-server`, one real mongod per test file, pinned to 8.0.4 to match the compose image. Collections are emptied between tests, indexes left in place.
+
+**Alternatives rejected.** *Mocking Mongoose* — the assertions would be about the mock. There is no meaningful way to fake "the reaper has not run yet" against a fake. *A Docker mongo via testcontainers or compose* — the most faithful environment, but then `npm test` needs a Docker daemon, and phase 1 has to pass on a clean clone with only Node. *A shared server via `globalSetup`* — marginally faster, but passing the URI into worker processes is wiring for a two-file suite that runs in under two seconds.
+
+**Trade-off accepted.** The first run on a machine downloads a 78MB binary, so `npm test` is not offline until that cache exists — this is the one place the repo silently needs the network. And the pin is a hand-maintained pair: the version here and the image tag in compose can drift apart without anything failing.
+
+**How I'd know I was wrong.** A test passes here and fails against the compose database.
+
 ## Dead ends
 
 _Nothing yet._
