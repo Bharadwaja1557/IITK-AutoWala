@@ -43,10 +43,26 @@ sha; `git log -S "[D-nn]" -- DECISIONS.md` gets the diff directly.
 
 **How I'd know I was wrong.** If iterating on shared types means restarting dev repeatedly, add `tsc --watch` to the dev script.
 
+## [D-03] Landmark picker as the location input; geometry stays real
+**Phase:** 1 · **Commit:** `Add campus landmark coordinates to the shared package` · **Touches:** packages/shared/src/landmarks.ts
+
+**Context.** The binding constraint is no GPS tracking, so a driver has to state where they are. Typing coordinates is absurd and a map picker is a heavier dependency than this phase can carry. But the position still has to be a real point, because ranking is the product.
+
+**Decision.** A fixed list of ~19 campus landmarks in `shared`, each holding real `[lng, lat]`. Picking one stores that GeoJSON Point on the session. An optional one-shot `navigator.geolocation` call can override it. Distance is always computed by `$geoNear` from stored coordinates; nothing consults landmark identity.
+
+**Alternatives rejected.** *Zone-adjacency table* (what the old version did) — "near" becomes a hand-maintained graph that lies the moment two adjacent zones are 900m apart, and it cannot rank two drivers inside one zone at all. *Free-text location* — not queryable. *Map picker (Leaflet/Mapbox)* — the honest long-term answer, but a tile provider is an external network dependency and a key, and non-negotiable #6 says the repo runs with nothing external.
+
+**Trade-off accepted.** Reported position is quantised to the nearest listed landmark, so a driver 300m from Hall 5 shows as at Hall 5. Ranking is therefore trustworthy at roughly landmark spacing (150-400m here), not at street level.
+
+**How I'd know I was wrong.** Riders report the top-ranked driver is routinely not the closest one, or the geolocation override gets used far more than the picker.
+
 ## Dead ends
 
 _Nothing yet._
 
 ## Known weaknesses
 
-_Nothing yet._
+- **Landmark coordinates are not surveyed.** They are hand-placed from map
+  knowledge, good to maybe 50-100m. Good enough to rank landmarks against each
+  other, not good enough to quote a distance to a rider as if it were measured.
+  Fixing this means one afternoon walking the campus with a GPS app.
