@@ -2,14 +2,11 @@ import type { HydratedDocument } from 'mongoose';
 import type { z } from 'zod';
 import type { DriverProfile, registerSchema } from '@iitk-autowala/shared';
 import { hashPassword, verifyPassword } from '../auth/password.js';
+import { isDuplicateKeyError } from '../db/mongo-errors.js';
 import { ApiError } from '../http/api-error.js';
 import { Driver, type DriverDoc } from '../models/driver.js';
 
 type RegisterPayload = z.output<typeof registerSchema>;
-
-function isDuplicateKeyError(error: unknown): error is { keyPattern?: Record<string, unknown> } {
-  return typeof error === 'object' && error !== null && (error as { code?: number }).code === 11000;
-}
 
 export function toDriverProfile(driver: DriverDoc): DriverProfile {
   return {
@@ -36,9 +33,6 @@ export async function registerDriver(
       role: 'driver',
     });
   } catch (error) {
-    // Checking for an existing driver first and then inserting would still
-    // race; the unique indexes are the actual guarantee, so the duplicate-key
-    // error is the thing worth translating.
     if (isDuplicateKeyError(error)) {
       const field = Object.keys(error.keyPattern ?? {})[0];
       if (field === 'phone') {

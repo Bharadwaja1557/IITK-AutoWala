@@ -67,12 +67,17 @@ export const CAMPUS_LANDMARK_IDS = CAMPUS_LANDMARKS.map((landmark) => landmark.i
 /** Where the rider picker starts: central, and a place people actually wait. */
 export const DEFAULT_LANDMARK_ID: LandmarkId = 'shopping-centre';
 
+/**
+ * Keyed by id, so a value already narrowed to `LandmarkId` — anything that came
+ * through the Zod enum — resolves without a possibly-undefined check.
+ */
+export const LANDMARKS_BY_ID = Object.fromEntries(
+  CAMPUS_LANDMARKS.map((landmark) => [landmark.id, landmark]),
+) as Record<LandmarkId, CampusLandmark>;
+
+/** For ids read back out of the database, where the type is only `string`. */
 export function findLandmark(id: string): CampusLandmark | undefined {
   return CAMPUS_LANDMARKS.find((landmark) => landmark.id === id);
-}
-
-export function isLandmarkId(id: string): id is LandmarkId {
-  return CAMPUS_LANDMARKS.some((landmark) => landmark.id === id);
 }
 
 export const LANDMARK_AREA_LABELS: Record<LandmarkArea, string> = {

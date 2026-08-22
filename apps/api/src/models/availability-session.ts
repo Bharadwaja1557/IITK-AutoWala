@@ -33,7 +33,9 @@ const pointSchema = new Schema<GeoPoint>(
  * entire roster.
  */
 const availabilitySessionSchema = new Schema<AvailabilitySessionDoc>({
-  driverId: { type: Schema.Types.ObjectId, ref: 'Driver', required: true },
+  // Unique: a driver has one current position, and declaring again moves it
+  // rather than adding a second. See D-09.
+  driverId: { type: Schema.Types.ObjectId, ref: 'Driver', required: true, unique: true },
   landmarkId: { type: String, default: null },
   location: { type: pointSchema, required: true },
   declaredAt: { type: Date, required: true, default: () => new Date() },
@@ -56,9 +58,9 @@ availabilitySessionSchema.index({ location: '2dsphere' });
 // for the other.
 availabilitySessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-// Serves "does this driver have a live session" and the delete-then-insert in
-// the availability service.
-availabilitySessionSchema.index({ driverId: 1, expiresAt: -1 });
+// `unique: true` on driverId already builds the index that serves "does this
+// driver have a live session"; expiresAt is filtered from it rather than
+// indexed alongside, because there is at most one document per driver.
 
 export const AvailabilitySession = model<AvailabilitySessionDoc>(
   'AvailabilitySession',

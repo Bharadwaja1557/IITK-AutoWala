@@ -121,6 +121,19 @@ sha; `git log -S "[D-nn]" -- DECISIONS.md` gets the diff directly.
 
 **How I'd know I was wrong.** A second client needs to call this API from an origin I do not control.
 
+## [D-09] A second tap moves the driver; it does not add a second session
+**Phase:** 1 · **Commit:** `Add the availability declare, read, and end routes` · **Touches:** apps/api/src/services/availability-service.ts, apps/api/src/models/availability-session.ts
+
+**Context.** A driver taps "I'm available" at Hall 5, then drives to the library and taps again. Either that appends a session or replaces the existing one, and the choice determines whether the rider list can show one driver twice.
+
+**Decision.** One session document per driver, enforced by a unique index on `driverId` and written with an upsert.
+
+**Alternatives rejected.** *Append and let the query pick the newest* — a driver who taps twice is in the rider list twice until the older row expires, and de-duplicating means a `$group` after `$geoNear`, which breaks "nearest N": the limit would have to over-fetch by an unknown factor to survive the grouping. *Delete then insert* — two round trips with a window in between where the driver is discoverable by nobody.
+
+**Trade-off accepted.** No history at all. Re-declaring destroys the previous position and the TTL deletes the rest, so questions like "when is the Shopping Centre busiest" are unanswerable. That means the history argument I made for a separate collection in D-05 is not real as built — what the separate collection actually buys is the TTL and a geo index scoped to live drivers, and D-05 oversold the rest. Also, concurrent first-taps can hit the unique index rather than serialising; that is caught and retried once.
+
+**How I'd know I was wrong.** Someone asks for demand-over-time data, or the retry path starts firing in logs.
+
 ## Dead ends
 
 _Nothing yet._

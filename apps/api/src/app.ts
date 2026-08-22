@@ -1,6 +1,7 @@
 import express, { type Express } from 'express';
 import { errorHandler, notFoundHandler } from './http/error-handler.js';
 import { authRouter } from './routes/auth-routes.js';
+import { availabilityRouter } from './routes/availability-routes.js';
 
 /**
  * Builds the app without binding a port, so Supertest can drive it directly.
@@ -21,6 +22,7 @@ export function createApp(): Express {
   });
 
   app.use('/api/auth', authRouter);
+  app.use('/api/availability', availabilityRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
