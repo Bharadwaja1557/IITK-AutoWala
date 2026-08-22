@@ -69,6 +69,19 @@ sha; `git log -S "[D-nn]" -- DECISIONS.md` gets the diff directly.
 
 **How I'd know I was wrong.** A phone number no Zod schema ever saw turns up in a rider result and someone tries to call it.
 
+## [D-05] Availability is a separate ephemeral collection, not fields on the driver
+**Phase:** 1 · **Commit:** `Add Driver and AvailabilitySession models with their indexes` · **Touches:** apps/api/src/models/availability-session.ts, apps/api/src/models/driver.ts
+
+**Context.** Availability is self-declared and must expire on its own. The obvious cheaper shape is three fields on `drivers`: `isAvailable`, `availableUntil`, `lastLocation`.
+
+**Decision.** A second collection, one document per declaration, with a TTL index on `expiresAt` and a 2dsphere index on `location`.
+
+**Alternatives rejected.** *Fields on `drivers`* — a TTL index deletes whole documents, so it cannot expire a field; expiry would need a cron sweeping `availableUntil`, which is the moving part the TTL index exists to remove. Worse, the 2dsphere index would then cover every driver ever registered instead of the handful currently live, so each rider query searches the whole roster. It also overwrites history: "when is Hall 5 busiest" is unanswerable from a field that gets replaced.
+
+**Trade-off accepted.** A driver's current status is now a second query or a `$lookup` rather than a field read, and the schema cannot enforce "at most one live session per driver" — the predicate depends on `now`, and a partial index filter cannot reference it. Uniqueness is enforced in application code (D-06) and can therefore be violated by a half-failed write.
+
+**How I'd know I was wrong.** The `$lookup` shows up as the expensive stage in the rider query, or duplicate live sessions per driver appear in real data.
+
 ## Dead ends
 
 _Nothing yet._
@@ -79,3 +92,11 @@ _Nothing yet._
   knowledge, good to maybe 50-100m. Good enough to rank landmarks against each
   other, not good enough to quote a distance to a rider as if it were measured.
   Fixing this means one afternoon walking the campus with a GPS app.
+- **`role` is written and never read in phase 1.** It exists because the phase-2
+  admin check needs it and adding a required field to a populated collection
+  later is a migration. It is the one field in the schema that breaks the
+  "delete anything stored but never rendered or queried" rule, knowingly.
+- **`syncIndexes()` on every boot** drops and rebuilds indexes that no longer
+  match the schema. Cheap on a collection this size, a foreground stall on a
+  large one. It needs to become a deploy step, not a boot step, before this
+  holds real data.
