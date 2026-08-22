@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+.npm/
+
+# Environment — never commit real values. See .env.example for the key list.
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Test / tooling caches
+coverage/
+.vitest/
+.cache/
+.mongodb-binaries/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
