@@ -186,6 +186,19 @@ sha; `git log -S "[D-nn]" -- DECISIONS.md` gets the diff directly.
 
 **How I'd know I was wrong.** Any feature that renders user-supplied HTML, or any third-party script added to the page.
 
+## [D-14] Three containers, with nginx serving the client and proxying the API
+**Phase:** 1 · **Commit:** `Add Docker Compose, Dockerfiles, and the README` · **Touches:** docker-compose.yml, apps/api/Dockerfile, apps/web/Dockerfile, apps/web/nginx.conf
+
+**Context.** `docker compose up` has to produce a working, seeded application on a clean clone with nothing else installed, and the client has to reach the API without crossing an origin (D-08).
+
+**Decision.** `mongo:8.0` with a named volume and a healthcheck the API waits on; the API on `node:24-alpine`; the built client on nginx, which serves the static files and proxies `/api` to the API container.
+
+**Alternatives rejected.** *Serve the bundle from Express with `express.static`* — one fewer image, but asset serving lands on the same event loop as bcrypt, and development would keep a proxy while production dropped it, which is the divergence D-08 exists to avoid. *One container running both* — a smaller compose file, and then the API and the web server share a lifecycle and cannot be restarted independently. *A hand-tuned multi-stage copy of just the workspace `node_modules`* — smaller image, but npm workspaces scatter symlinks across several `node_modules` directories, and reassembling that by hand is exactly the sort of thing that fails only in the deployed image.
+
+**Trade-off accepted.** The API image copies the whole repo and prunes, so it ships source and tests it does not run, and any source change re-runs `npm ci` because nothing is layered for cache. It is bigger and slower to rebuild than it needs to be. I took the simple version specifically because I could not test a clever one — there is no Docker daemon on the machine this was written on.
+
+**How I'd know I was wrong.** Rebuild time gets annoying, or the image size matters to wherever this ends up deployed.
+
 ## Dead ends
 
 _Nothing yet._
@@ -234,3 +247,10 @@ _Nothing yet._
   phase 1 spends its test budget on the two database properties that are
   actually hard to get right. Everything in `apps/web` is currently covered by
   typecheck and by my having clicked it.
+- **Nothing in the Docker setup has been run.** No Docker daemon existed on the
+  machine where phase 1 was written, so `docker-compose.yml`, both Dockerfiles
+  and the nginx config are written-but-unexecuted. Everything they contain was
+  verified another way — the API and client were run directly against a local
+  mongod, the full path was driven in a real browser — but the containers
+  themselves are unproven. Non-negotiable #6 is not satisfied until someone
+  runs it.
