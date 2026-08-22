@@ -82,6 +82,45 @@ sha; `git log -S "[D-nn]" -- DECISIONS.md` gets the diff directly.
 
 **How I'd know I was wrong.** The `$lookup` shows up as the expensive stage in the rider query, or duplicate live sessions per driver appear in real data.
 
+## [D-06] The token carries a subject and nothing else
+**Phase:** 1 · **Commit:** `Add driver registration, login, and bearer-token auth` · **Touches:** apps/api/src/auth/tokens.ts, apps/api/src/middleware/require-auth.ts
+
+**Context.** Handlers need to know which driver is acting. The usual JWT shortcut is to pack the profile and role into the claims so the request needs no database read at all.
+
+**Decision.** Claims are `sub` plus expiry. `requireAuth` loads the driver by id on every authenticated request and attaches the document.
+
+**Alternatives rejected.** *Role and profile in the claims* — a driver who is removed or demoted keeps their old access until the token expires, seven days here, with no revocation short of rotating the signing secret. That matters specifically because phase 2 puts an admin role behind this. *Server-side session store* — gives revocation, but adds a store to operate for a lookup that costs the same as the driver read already happening.
+
+**Trade-off accepted.** One `findById` per authenticated request. The API is therefore not stateless in the way JWTs are usually sold, and under load that read sits on the hot path of every mutating call. There is no cache in front of it.
+
+**How I'd know I was wrong.** The auth read shows up as the dominant cost in a request profile.
+
+## [D-07] bcryptjs rather than the native bcrypt binding
+**Phase:** 1 · **Commit:** `Add driver registration, login, and bearer-token auth` · **Touches:** apps/api/src/auth/password.ts
+
+**Context.** Passwords need a cost-factor KDF, and the container is `node:alpine`. Non-negotiable #6 says a clean clone must build with nothing external.
+
+**Decision.** `bcryptjs`, pure JavaScript, cost factor from env (default 10).
+
+**Alternatives rejected.** *`bcrypt`* — a native addon needing python and a C toolchain in the build image, or a prebuilt binary matching the exact Node and musl combination. That is a build-time failure on the one requirement I am least willing to break. *`argon2`* — better algorithm, same native-build problem, and a memory-cost parameter I would be picking arbitrarily. *`crypto.scrypt`* — no dependency, but then I am hand-rolling salt generation and the encoded-hash format, which is the part of password storage worth not writing myself.
+
+**Trade-off accepted.** Measured here: 56ms per hash at cost 10, 199ms at cost 12. That runs on the event loop, so concurrent sign-ins queue behind each other. The native binding would be several times faster for the same cost factor, which means this choice effectively caps how high the cost factor can go before login latency becomes the problem.
+
+**How I'd know I was wrong.** Sign-in latency rises with concurrency rather than with cost factor.
+
+## [D-08] Same-origin `/api` proxy instead of CORS
+**Phase:** 1 · **Commit:** `Add driver registration, login, and bearer-token auth` · **Touches:** apps/api/src/app.ts
+
+**Context.** The client and API run on different ports in development. Either the API learns to allow the browser's origin, or the browser never crosses one.
+
+**Decision.** No CORS middleware and no `CORS_ORIGIN` key. The client always calls relative `/api/...`; Vite proxies it in development and nginx proxies it in the container, so both environments have the same network shape. The matching proxy configuration lands with the client and the container.
+
+**Alternatives rejected.** *`cors` middleware plus an absolute API base URL* — another env key to keep synchronised across dev, compose and any deployment, and an allowlist that is one careless line from `*`. *Proxy in dev, CORS in production* — two different network topologies, which is exactly where "worked locally" bugs come from.
+
+**Trade-off accepted.** The API is unreachable from any other origin until CORS is added back. A native app, a second front-end, or hosting the static bundle on a CDN pointed at an API elsewhere all require revisiting this. Every deployment must include a reverse proxy.
+
+**How I'd know I was wrong.** A second client needs to call this API from an origin I do not control.
+
 ## Dead ends
 
 _Nothing yet._
@@ -100,3 +139,9 @@ _Nothing yet._
   match the schema. Cheap on a collection this size, a foreground stall on a
   large one. It needs to become a deploy step, not a boot step, before this
   holds real data.
+- **Login leaks whether a phone number is registered, by timing.** Both failure
+  paths return the same message, but the "no such driver" path skips bcrypt and
+  returns in ~1ms while a wrong password costs ~56ms. Fixing it means comparing
+  against a dummy hash on the miss path. Not done.
+- **No rate limiting on login.** Phase 4. Right now the only thing between an
+  attacker and an unlimited password-guessing loop is bcrypt's cost factor.
