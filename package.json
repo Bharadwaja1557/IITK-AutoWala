@@ -1,0 +1,29 @@
+{
+  "name": "iitk-autowala",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Availability discovery for auto drivers on the IIT Kanpur campus.",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "build:shared": "npm run build --workspace @iitk-autowala/shared",
+    "build": "npm run build:shared && npm run build --workspace @iitk-autowala/api && npm run build --workspace @iitk-autowala/web",
+    "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present",
+    "test": "npm run build:shared && npm run test --workspace @iitk-autowala/api",
+    "seed": "npm run build:shared && npm run seed --workspace @iitk-autowala/api",
+    "dev": "npm run build:shared && concurrently --names api,web --prefix-colors cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev --workspace @iitk-autowala/api",
+    "dev:web": "npm run dev --workspace @iitk-autowala/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  }
+}
