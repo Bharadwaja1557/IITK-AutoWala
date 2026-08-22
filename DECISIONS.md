@@ -56,6 +56,19 @@ sha; `git log -S "[D-nn]" -- DECISIONS.md` gets the diff directly.
 
 **How I'd know I was wrong.** Riders report the top-ranked driver is routinely not the closest one, or the geolocation override gets used far more than the picker.
 
+## [D-04] Format validation at the HTTP boundary only; Mongoose keeps structure
+**Phase:** 1 · **Commit:** `Define the shared request/response contracts in Zod` · **Touches:** packages/shared/src/contracts.ts
+
+**Context.** Two requirements pull against each other: every registration must be a valid Indian mobile, and every seeded number must be impossible to dial. If the mobile regex sits on the Mongoose path, the seed cannot write.
+
+**Decision.** Content rules — mobile regex, plate format, password length, landmark ids — live only in the Zod schemas in `shared`, applied where a request enters. Mongoose keeps type, `required`, `unique`, `enum`, `ref`: the constraints that protect the collection's shape, not its content. The seed then writes directly and the two rules stop fighting.
+
+**Alternatives rejected.** *Regex on the model plus a seed bypass* (`validateBeforeSave: false`, or raw `collection.insertMany`) — works, but leaves a documented way to skip validation sitting in the repo, and that is the line that gets copy-pasted into a real write path a year later. *Regex in both places* — they drift, and then the API rejects what the database accepts with a different message.
+
+**Trade-off accepted.** Nothing at the database level guarantees a stored phone is dialable. Any write that does not pass through a route can insert garbage — the seed does exactly that on purpose, and a future migration or a `mongosh` session could do it by accident. The guarantee is a convention, not a mechanism.
+
+**How I'd know I was wrong.** A phone number no Zod schema ever saw turns up in a rider result and someone tries to call it.
+
 ## Dead ends
 
 _Nothing yet._
