@@ -1,129 +1,170 @@
 # IITK AutoWala 🛺
 
-A hackathon build. Riders pick a campus zone and get a list of auto/taxi drivers who
-recently marked themselves available in that zone or in a small set of hand-picked
-neighbouring zones, with a tap-to-call phone link for each.
+Riders on the IIT Kanpur campus pick the zone they're standing in and get a list of auto and
+taxi drivers who have recently marked themselves available there or nearby — each with a
+tap-to-call phone number.
 
-This README describes **what the code actually does**. The original submission README is
-preserved verbatim at [README.original.md](README.original.md); several of its claims do not
-match the code, and the discrepancies are catalogued in [WORK.md](WORK.md).
+Built at a hackathon, around one constraint: drivers have cheap phones, patchy data and no
+patience for an app. So drivers do one thing — press "I am Available" — and everything else
+is derived from that press and its timestamp.
 
 ---
 
-## What it is
+## What it does
 
-A three-panel single-page React app over a small Express REST API backed by one MySQL table.
+**Rider.** Pick a zone from a dropdown. See available drivers grouped by zone — your own
+first, then nearby ones. Tap a number to call. The list refreshes every 30 seconds.
 
-- **Rider** — pick a zone, see available drivers grouped by zone, tap a number to call.
-- **Driver** — enter a phone number, register if new, toggle Available/Busy, change zone,
-  watch a countdown of remaining visibility.
-- **Admin** — reachable by tapping the page title five times; lists every driver with status.
+**Driver.** Enter your phone number. Register if you're new. Press *I am Available* or
+*I am Busy*, change your zone when you move, and watch a live countdown of how much
+visibility time you have left.
 
-**It is a discovery directory, not a ride-hailing app.** There is no booking, no matching,
-no driver acceptance step, no fare, no live location tracking, and no map. The rider's
-result is a phone number they dial themselves.
+**Admin.** Reachable by tapping the page title five times. Lists every driver with status,
+last-seen time and expiry, plus counts of active / busy / expired.
 
-## Stack
-
-| Layer | What |
-|---|---|
-| Frontend | React 19, Create React App (`react-scripts` 5). No router, no state library — `fetch` and `useState`. |
-| Backend | Node.js, Express 5, `cors`, `mysql2`. Plain CommonJS, one file. |
-| Database | MySQL — a single `drivers` table, created on boot with `CREATE TABLE IF NOT EXISTS` (`db.js:59-70`). |
-
-**It is not a MERN app**, despite the original folder name. There is no MongoDB.
-`mongoose` appears in `package.json` and in `models/Driver.js`, but nothing imports that
-file and it would throw if anything did — it uses ESM `import` inside a package declared
-`"type": "commonjs"`. `sqlite3` is likewise declared but unused: the SQLite implementation
-is commented out at the top of `db.js` and `index.js`. `drivers.db` is a leftover from that
-abandoned approach and is read by no code.
+There is no booking step. The rider gets a phone number and calls it — the same thing they'd
+do at an auto stand, minus walking to the stand to find out nobody's there.
 
 ## How discovery works
 
 Two filters and a sort:
 
-1. **Zone set** — `NEARBY_ZONES` (`index.js:204-212`) maps each of the 7 zones to itself
-   plus 3 hand-picked neighbours. The query returns drivers whose zone is in that set.
-2. **Freshness** — only drivers with `last_seen >= now - 30 minutes` and `is_available = 1`
-   (`index.js:327-328`). Nothing expires anything in the background; this is a filter
-   applied at read time.
-3. **Ordering** — results are sorted by each driver's zone's **position in the hardcoded
-   neighbour list** (`index.js:335-337`).
+**Zone matching.** Each of the 7 campus zones maps to itself plus three neighbours, in a
+`NEARBY_ZONES` table. A rider at the IITK Gate sees drivers at the gate, CSE, KV School and
+the Auditorium — not Hall 10.
 
-That third step is worth stating plainly, because the code comment above it says
-`// sort by proximity priority`: **there is no distance computation anywhere in this
-project.** No coordinates are stored, no geospatial query is used, no distance is
-calculated. "Proximity" is a human's judgement about campus geography, frozen as the order
-of strings in an array. The ordering is only as good as that hand-written guess.
+**Freshness.** A driver appears only if they marked themselves available within the last 30
+minutes. Nothing runs in the background to expire anyone; the rider's query filters on
+`last_seen` at read time. A driver who goes home without pressing *Busy* simply drops off
+the list half an hour later.
 
-## Auth
+**Ordering.** Results come back ordered by their zone's position in that neighbour list, so
+the rider's own zone leads, then the nearest neighbour, and so on.
 
-**There is none.** No tokens, no sessions, no passwords, no middleware.
+Discovery is **zone-based, not distance-based**. No coordinates are stored and no distance
+is computed anywhere — "nearby" means a hand-written adjacency table reflecting how the
+campus is actually laid out and walked. On a campus with seven pickup points that people
+already refer to by name, a lookup table beat a geospatial query for the time available, and
+it means a driver never has to grant location permission or keep GPS on.
 
-- Anyone who knows a driver's phone number can change that driver's availability and zone
-  (`POST /driver/status`).
-- `GET /admin/drivers` returns every driver's name, phone and location to any caller.
-- `POST /admin/force-offline` lets any caller disable any driver by id.
-- The admin panel's "hidden" five-tap entry (`App.js:14-20`) is a UI toggle, not access
-  control — the endpoints it calls are open regardless.
-- CORS is `origin: "*"` (`index.js:198`).
+The trade-off is real: the ordering is only as good as the table. A zone map that's wrong,
+or a campus with more than a handful of pickup points, would need actual coordinates.
 
-This is a hackathon artefact and is documented, not defended.
+## Tech stack
 
-## API
+| Layer | |
+|---|---|
+| Frontend | React 19, Create React App. No router, no state library — `useState` and `fetch`. |
+| Backend | Node.js, Express 5, `cors`, `mysql2`. CommonJS, single file. |
+| Database | MySQL — one `drivers` table, created on boot if absent. |
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/health` | Liveness — returns `{status:"OK"}` |
-| POST | `/driver/register` | Create a driver. Starts **unavailable** (`is_available = 0`). |
-| POST | `/driver/status` | Set availability, optionally move zone, refresh `last_seen` |
-| GET | `/driver/me?phone=` | Driver's own record + computed `is_visible`. Returns **HTTP 200 with `{error, is_new:true}`** for an unknown phone, not a 404 — the frontend keys registration off that flag. |
-| GET | `/drivers?zone=` | Rider discovery — the query described above |
-| GET | `/admin/drivers` | Every driver, newest `last_seen` first |
-| POST | `/admin/force-offline` | Set `is_available = 0` by id. **No UI calls this** — the admin panel has no such button. |
+## Project structure
 
-## Running it locally
+```
+driver-discovery-backend/
+├── index.js            all 7 routes, zone map, 30-minute window
+├── db.js               MySQL pool + table creation
+├── models/Driver.js
+└── package.json
 
-You need Node and a reachable MySQL. The table is created automatically on first boot.
+driver-discovery-frontend/
+├── src/
+│   ├── App.js          panel switching, hidden admin entry
+│   ├── panels/         RiderPanel · DriverPanel · AdminPanel
+│   ├── css/
+│   └── config/
+└── package.json
+```
+
+## Getting started
+
+You'll need Node and a reachable MySQL. The `drivers` table is created automatically on
+first boot.
 
 ```bash
-# 1. Backend
+# Backend
 cd driver-discovery-backend
-cp .env.example .env          # then fill in your MySQL details
+cp .env.example .env          # fill in your MySQL details
 npm install
-node index.js                 # http://localhost:4000 — no start script exists
+node index.js                 # http://localhost:4000
 
-# 2. Frontend, in a second terminal
+# Frontend, second terminal
 cd driver-discovery-frontend
 cp .env.example .env          # REACT_APP_API_BASE, defaults to localhost:4000
 npm install
 npm start                     # http://localhost:3000
 ```
 
-If MySQL is unreachable the backend prints a connection error and exits — `db.js:46-53`
-calls `process.exit(1)` by design.
+If MySQL is unreachable the backend logs the error and exits rather than serving requests
+against a dead pool.
 
-Quick MySQL via Docker, if you don't have one:
+No MySQL handy:
 
 ```bash
 docker run -d --name autowala-mysql -p 3306:3306 \
   -e MYSQL_ROOT_PASSWORD=devpassword -e MYSQL_DATABASE=iitk_autowala mysql:8
 ```
 
-## Credentials
+### Configuration
 
-The original code had live MySQL credentials hardcoded in `db.js`. They were removed during
-the restore and replaced with environment variables. See "Secrets found" in
-[WORK.md](WORK.md) for detail and rotation status. Never commit `.env`.
+| Variable | Where | Purpose |
+|---|---|---|
+| `PORT` | backend | Server port, defaults to 4000 |
+| `DB_HOST` `DB_USER` `DB_PASSWORD` `DB_NAME` `DB_PORT` | backend | MySQL connection |
+| `REACT_APP_API_BASE` | frontend | Backend base URL, defaults to `http://localhost:4000` |
 
-## Known broken / not wired up
+Both `.env.example` files list every key the code reads. Never commit a real `.env`.
 
-Recorded rather than fixed, so this repo stays an honest record of the hackathon build.
-Full detail in [WORK.md](WORK.md).
+## API
 
-- `POST /admin/force-offline` works but no UI reaches it.
-- `src/config/api.js` and `src/config/zones.js` are dead — nothing imports them. The zone
-  list is copy-pasted into all three panels instead, and `config/zones.js`'s `NEARBY` map
-  disagrees with the backend's.
-- `models/Driver.js` is unreachable Mongoose code that would throw if required.
-- The deployed Render backend no longer responds; the Netlify frontend still serves.
+Base URL `http://localhost:4000`. All JSON, no authentication.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/health` | Returns `{"status":"OK"}` |
+| `POST` | `/driver/register` | `{name, phone, vehicle_type, zone}`. Creates the driver **unavailable** — they must declare availability separately. `409` if the phone is taken. |
+| `POST` | `/driver/status` | `{phone, is_available, zone?}`. Sets availability, optionally moves zone, refreshes `last_seen`. |
+| `GET` | `/driver/me?phone=` | The driver's record plus a computed `is_visible`. Returns `200` with `{error, is_new: true}` for an unknown phone — the registration form keys off that flag. |
+| `GET` | `/drivers?zone=` | Rider discovery. Zone is required. |
+| `GET` | `/admin/drivers` | Every driver, newest `last_seen` first. |
+| `POST` | `/admin/force-offline` | `{id}`. Sets `is_available = 0`. |
+
+### Data model
+
+One table. Zones are a constant in code, not rows.
+
+| Column | Type | |
+|---|---|---|
+| `id` | `INT AUTO_INCREMENT` | |
+| `name` | `VARCHAR(255)` | |
+| `phone` | `VARCHAR(20) UNIQUE` | Also the login identifier |
+| `vehicle_type` | `VARCHAR(50)` | `auto` or `taxi` |
+| `zone` | `VARCHAR(100)` | One of the 7 zone keys |
+| `is_available` | `TINYINT(1)` | The driver's own declaration |
+| `last_seen` | `BIGINT` | Epoch ms of that declaration — drives the 30-minute window |
+
+## Scope and limitations
+
+Known, and deliberate for the timebox:
+
+**No authentication.** There are no accounts, tokens or sessions. A phone number is an
+identifier, not a credential — anyone who knows one can change that driver's availability,
+and the admin routes are open to any caller. The five-tap admin entry hides the panel in the
+UI; it does not protect the endpoints behind it. CORS is open. This is the first thing that
+would need building for real use.
+
+**Server-side validation is thin.** The phone-shape check (10 digits, starting 6–9) runs in
+the browser only; the API checks that fields are present, not that they're well-formed.
+
+**`POST /admin/force-offline`** works but has no button in the admin panel — it's callable
+by hand only.
+
+**Availability is self-reported.** Nothing verifies a driver is where they say they are, or
+that they're still driving. The 30-minute window is the only correction for a stale claim.
+
+**`src/config/`** holds an earlier attempt at centralising the zone list and API base; the
+panels still carry their own copies, and the two definitions have drifted apart.
+
+## Screens
+
+Demo recordings (mobile and desktop) are linked in [live-demo-link.md](live-demo-link.md).
