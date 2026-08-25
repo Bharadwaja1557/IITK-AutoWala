@@ -1,0 +1,105 @@
+.admin-page {
+  padding: 20px;
+  font-family: system-ui, sans-serif;
+}
+
+/* Header */
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.refresh-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #b7e4c7; /* pastel green */
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.refresh-btn:hover {
+  background: #a6dcbc;
+}
+
+.last-refreshed {
+  margin: 6px 0 16px;
+  font-size: 13px;
+  color: #666;
+}
+
+/* Summary cards */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.summary-card {
+  padding: 12px;
+  border-radius: 8px;
+  background: #f5f5f5;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.summary-card span {
+  font-size: 13px;
+  color: #555;
+}
+
+.summary-card b {
+  font-size: 20px;
+}
+
+.summary-card.green {
+  background: #e6f4ea;
+}
+
+.summary-card.yellow {
+  background: #fff4cc;
+}
+
+.summary-card.red {
+  background: #fdecea;
+}
+
+/* Table */
+.table-wrapper {
+  overflow-x: auto;
+  border: #ddd 1px solid;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th,
+td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #ddd;
+  text-align: left;
+}
+
+th {
+  background: #f0f0f0;
+  font-weight: 600;
+}
+
+/* Mobile tweaks */
+@media (max-width: 600px) {
+  th,
+  td {
+    font-size: 13px;
+    padding: 6px;
+  }
+
+  .admin-header h2 {
+    font-size: 18px;
+  }
+}

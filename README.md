@@ -1,122 +1,129 @@
-# IITK AutoWala
+# IITK AutoWala 🛺
 
-Finding an auto on the IIT Kanpur campus means calling drivers one at a time
-from a list forwarded around hall WhatsApp groups. Each call takes 30-60
-seconds and tells you nothing until someone picks up. Meanwhile a free driver
-two minutes away is sitting there, unknown to you.
+A hackathon build. Riders pick a campus zone and get a list of auto/taxi drivers who
+recently marked themselves available in that zone or in a small set of hand-picked
+neighbouring zones, with a tap-to-call phone link for each.
 
-Both sides already exist. What is missing is the information: who is free right
-now, and where. That state lives only in drivers' heads.
+This README describes **what the code actually does**. The original submission README is
+preserved verbatim at [README.original.md](README.original.md); several of its claims do not
+match the code, and the discrepancies are catalogued in [WORK.md](WORK.md).
 
-This is a screen that shows it.
+---
 
-## The constraint everything follows from
+## What it is
 
-**No GPS tracking.** Drivers will not run a background location app — it costs
-data, it drains the battery, and there is nothing in it for them. So
-availability here is:
+A three-panel single-page React app over a small Express REST API backed by one MySQL table.
 
-- **self-declared** — the driver says they are free, nothing infers it
-- **one tap** — pick where you are from a list of campus landmarks, or let the
-  browser read your position once
-- **self-expiring** — a declaration is good for a bounded window (45 minutes by
-  default) and then disappears on its own
+- **Rider** — pick a zone, see available drivers grouped by zone, tap a number to call.
+- **Driver** — enter a phone number, register if new, toggle Available/Busy, change zone,
+  watch a countdown of remaining visibility.
+- **Admin** — reachable by tapping the page title five times; lists every driver with status.
 
-That last property is what keeps the list honest without anyone maintaining it.
-A driver who forgets to go off duty stops showing up anyway.
+**It is a discovery directory, not a ride-hailing app.** There is no booking, no matching,
+no driver acceptance step, no fare, no live location tracking, and no map. The rider's
+result is a phone number they dial themselves.
 
-Distance is real. Every declaration stores a GeoJSON point, and rider search is
-a `$geoNear` aggregation returning great-circle metres. The landmark list is
-how a position gets entered, not a substitute for computing one.
+## Stack
 
-## Demo data
+| Layer | What |
+|---|---|
+| Frontend | React 19, Create React App (`react-scripts` 5). No router, no state library — `fetch` and `useState`. |
+| Backend | Node.js, Express 5, `cors`, `mysql2`. Plain CommonJS, one file. |
+| Database | MySQL — a single `drivers` table, created on boot with `CREATE TABLE IF NOT EXISTS` (`db.js:59-70`). |
 
-Everything in a running instance is invented: the names, the vehicle numbers,
-and the phone numbers, which all begin `55501`. Indian mobile numbers start
-with 6, 7, 8 or 9, so nothing here can be dialled and nothing here can collide
-with a real line. The API's own validator rejects these numbers, which means a
-seeded account cannot be signed into either.
+**It is not a MERN app**, despite the original folder name. There is no MongoDB.
+`mongoose` appears in `package.json` and in `models/Driver.js`, but nothing imports that
+file and it would throw if anything did — it uses ESM `import` inside a package declared
+`"type": "commonjs"`. `sqlite3` is likewise declared but unused: the SQLite implementation
+is commented out at the top of `db.js` and `index.js`. `drivers.db` is a leftover from that
+abandoned approach and is read by no code.
 
-Every screen carries a banner saying so, and the Call button opens an
-explanation rather than a `tel:` link. There is no `tel:` link anywhere in this
-codebase.
+## How discovery works
 
-## Running it
+Two filters and a sort:
 
-### With Docker
+1. **Zone set** — `NEARBY_ZONES` (`index.js:204-212`) maps each of the 7 zones to itself
+   plus 3 hand-picked neighbours. The query returns drivers whose zone is in that set.
+2. **Freshness** — only drivers with `last_seen >= now - 30 minutes` and `is_available = 1`
+   (`index.js:327-328`). Nothing expires anything in the background; this is a filter
+   applied at read time.
+3. **Ordering** — results are sorted by each driver's zone's **position in the hardcoded
+   neighbour list** (`index.js:335-337`).
 
-```sh
-cp .env.example .env          # then set JWT_SECRET
-openssl rand -base64 48       # a value for it
-docker compose up --build
-```
+That third step is worth stating plainly, because the code comment above it says
+`// sort by proximity priority`: **there is no distance computation anywhere in this
+project.** No coordinates are stored, no geospatial query is used, no distance is
+calculated. "Proximity" is a human's judgement about campus geography, frozen as the order
+of strings in an array. The ordering is only as good as that hand-written guess.
 
-Then open <http://localhost:8080>. The database, the API and the client all
-come up together, seeded, with nothing else installed.
+## Auth
 
-`JWT_SECRET` has no default: compose stops with a message if it is unset. Every
-other key does have one.
+**There is none.** No tokens, no sessions, no passwords, no middleware.
 
-### Without Docker
+- Anyone who knows a driver's phone number can change that driver's availability and zone
+  (`POST /driver/status`).
+- `GET /admin/drivers` returns every driver's name, phone and location to any caller.
+- `POST /admin/force-offline` lets any caller disable any driver by id.
+- The admin panel's "hidden" five-tap entry (`App.js:14-20`) is a UI toggle, not access
+  control — the endpoints it calls are open regardless.
+- CORS is `origin: "*"` (`index.js:198`).
 
-Needs Node 20.11+ and a MongoDB you can reach.
+This is a hackathon artefact and is documented, not defended.
 
-```sh
+## API
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/health` | Liveness — returns `{status:"OK"}` |
+| POST | `/driver/register` | Create a driver. Starts **unavailable** (`is_available = 0`). |
+| POST | `/driver/status` | Set availability, optionally move zone, refresh `last_seen` |
+| GET | `/driver/me?phone=` | Driver's own record + computed `is_visible`. Returns **HTTP 200 with `{error, is_new:true}`** for an unknown phone, not a 404 — the frontend keys registration off that flag. |
+| GET | `/drivers?zone=` | Rider discovery — the query described above |
+| GET | `/admin/drivers` | Every driver, newest `last_seen` first |
+| POST | `/admin/force-offline` | Set `is_available = 0` by id. **No UI calls this** — the admin panel has no such button. |
+
+## Running it locally
+
+You need Node and a reachable MySQL. The table is created automatically on first boot.
+
+```bash
+# 1. Backend
+cd driver-discovery-backend
+cp .env.example .env          # then fill in your MySQL details
 npm install
-cp .env.example .env          # set JWT_SECRET and MONGODB_URI
-npm run dev
+node index.js                 # http://localhost:4000 — no start script exists
+
+# 2. Frontend, in a second terminal
+cd driver-discovery-frontend
+cp .env.example .env          # REACT_APP_API_BASE, defaults to localhost:4000
+npm install
+npm start                     # http://localhost:3000
 ```
 
-The API comes up on :4000 and the client on <http://localhost:5173>, which
-proxies `/api` to it. Seeding happens at boot when `DEMO_MODE=true`; `npm run
-seed` does it on demand.
+If MySQL is unreachable the backend prints a connection error and exits — `db.js:46-53`
+calls `process.exit(1)` by design.
 
-## Tests
+Quick MySQL via Docker, if you don't have one:
 
-```sh
-npm test         # API: Vitest + Supertest against a real mongod in memory
-npm run typecheck
+```bash
+docker run -d --name autowala-mysql -p 3306:3306 \
+  -e MYSQL_ROOT_PASSWORD=devpassword -e MYSQL_DATABASE=iitk_autowala mysql:8
 ```
 
-The first run downloads a MongoDB binary (~78MB) and caches it. That is the one
-place this repo needs the network after `npm install`.
+## Credentials
 
-Two of the tests are the ones worth reading, in
-[`apps/api/tests/discovery.test.ts`](apps/api/tests/discovery.test.ts):
+The original code had live MySQL credentials hardcoded in `db.js`. They were removed during
+the restore and replaced with environment variables. See "Secrets found" in
+[WORK.md](WORK.md) for detail and rotation status. Never commit `.env`.
 
-- distances come back checked against an independent haversine calculation, not
-  just in the right order
-- a session that expired an hour ago is excluded **while still physically in the
-  collection** — MongoDB's TTL reaper only runs about once a minute, so the
-  query has to filter on expiry itself. The index is cleanup; the filter is
-  correctness.
+## Known broken / not wired up
 
-## What is here, and what is not
+Recorded rather than fixed, so this repo stays an honest record of the hackathon build.
+Full detail in [WORK.md](WORK.md).
 
-In v1: driver registration and sign-in, one-tap availability with a TTL,
-geospatial rider search ranked by distance, synthetic seed data that refills
-itself, and the tests above.
-
-Not here, and not stubbed anywhere: ride request and accept, payments, fares,
-ratings, chat, navigation, live tracking of moving vehicles. The schema leaves
-room to add a request/accept flow later without restructuring, but none of it is
-written.
-
-Phase 1 of 5. Still to come: live updates over WebSocket, an admin roster behind
-a role check, CI, rate limiting.
-
-## Layout
-
-```
-packages/shared   Zod schemas, inferred types, campus landmark coordinates.
-                  Imported by both sides — no duplicated interfaces.
-apps/api          Express 5, Mongoose, JWT auth, the $geoNear pipeline.
-apps/web          Vite + React. Two screens: driver and rider.
-```
-
-## Why the code looks like this
-
-[`DECISIONS.md`](DECISIONS.md) records every choice where a real alternative
-existed — what was picked, what was rejected and why, and what each choice makes
-worse. It also carries a running list of the things that are currently thin,
-stated plainly.
+- `POST /admin/force-offline` works but no UI reaches it.
+- `src/config/api.js` and `src/config/zones.js` are dead — nothing imports them. The zone
+  list is copy-pasted into all three panels instead, and `config/zones.js`'s `NEARBY` map
+  disagrees with the backend's.
+- `models/Driver.js` is unreachable Mongoose code that would throw if required.
+- The deployed Render backend no longer responds; the Netlify frontend still serves.

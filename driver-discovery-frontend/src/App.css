@@ -1,0 +1,47 @@
+.app-container {
+  padding: 20px;
+  font-family: system-ui, sans-serif;
+  background: white;
+}
+
+/* Heading left aligned */
+.app-title {
+  text-align: center;
+  margin-bottom: 20px;
+  margin-top: 10px;
+  cursor: pointer;
+  font-size: 28px;
+  font-weight: bold;
+}
+
+/* Navigation buttons container, centered */
+.nav-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+/* Buttons style */
+.nav-btn {
+  padding: 8px 16px;
+  font-size: 14px;
+  border: none;
+  border-radius: 6px;
+  background: #b7e4c7; /* pastel blue */
+  cursor: pointer;
+  color: #000;
+  min-width: 120px;
+}
+
+.nav-btn:hover {
+  background: #a6dcbc;
+}
+
+/* Full width divider */
+.divider {
+  border: none;
+  border-top: 1px solid #ccc;
+  width: 100%;
+  margin-top: 25px;
+}

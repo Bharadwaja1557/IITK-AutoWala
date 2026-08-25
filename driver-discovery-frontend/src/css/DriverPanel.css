@@ -1,0 +1,90 @@
+.driver-page {
+  background: white;
+  min-height: 70vh;
+  padding: 32px;
+  padding-top: 0.25rem;
+  font-family: system-ui, sans-serif;
+  text-align: center;
+}
+
+.panel-title {
+  margin-bottom: 20px;
+}
+
+/* Cards */
+.card {
+  max-width: 400px;
+  margin: 0 auto 24px auto;
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  text-align: left;
+  line-height: 1.6;
+}
+
+.card-title {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+/* Center small cardless forms */
+.center-form {
+  max-width: 400px;
+  margin: 0 auto 24px auto;
+}
+
+/* Inputs and selects */
+.input-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+  align-items: center;
+}
+
+.input-field {
+  padding: 10px 10px;
+  font-size: 14px;
+  width: 100%;
+  max-width: 250px;
+  box-sizing: border-box;
+}
+
+/* Buttons */
+.primary-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background: #b7e4c7; /* pastel green */
+  font-size: 14px;
+}
+
+.secondary-btn {
+  padding: 8px 16px;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  cursor: pointer;
+  background: #f5f5f5;
+  font-size: 14px;
+}
+
+.primary-btn:hover {
+  background: #a6dcbc;
+}
+
+.secondary-btn:hover {
+  background: #eaeaea;
+}
+
+/* Full width buttons inside card / forms */
+.full-width-btn {
+  width: 100%;
+  max-width: 250px;
+}
+
+/* Error messages */
+.error-msg {
+  color: #d9534f;
+  margin-top: 12px;
+}
